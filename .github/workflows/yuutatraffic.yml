@@ -1,0 +1,153 @@
+name: yuutatraffic2
+
+on:
+  schedule:
+    # 2週間に1回 日曜日 00:00 UTC
+    # 日本時間では日曜朝9時
+    - cron: '0 0 */14 * 0'
+
+  workflow_dispatch:
+
+jobs:
+  traffic:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: old step
+        if: false
+        run: |
+           : <<'comment1'
+
+            """これ.ymlでダメ
+
+            総合DL数は utm_source見ないとわからない。これはずっと残る。
+            https://api.github.com/repos/SaiwaiClinicKochi/AutoRadioDownload/releases?utm_source   
+
+            https://api.github.com/repos/SaiwaiClinicKochi/SHUNPRI-SIKAKU-KUN/releases?utm_source  
+    
+            
+             このプログラムは２週間で消える２週間データを自動でtraffic/traffic.txtへ保存
+            yml には：workflow_dispatch:が入っているので、手動実行できる。
+            上辺menu Actions
+             この中はmenuがたくさん配置されてるが、自分で作るリンクに入るとmain.ymlへ入力できるようになっているので貼り付けて保存　
+                するとActions で左にリスト出てくるようになる。クリックすると右に水色のが出てくるRun work flow
+            github内常駐プログラムによる自動化の流れ
+            ymlにscript入れ、traffic/traffic.txt空配置し、GH_TOKENを作成し暗号を登録、権限にwrite
+
+            実行ファイル、保存用ファイルを作成配置
+            https://github.com/SaiwaiClinicKochi/AutoRadioDownload　で add file
+            file name 窓にtraffic/traffic.json入れると、フォルダまで自動生成　＞　Commit で確定
+             .github/workflows/yuutatraffic.ymlを上辺Actions内ではりつけて作る 
+                または .github/workflows/yuutatraffic.ymlで作成OK
+
+            権限
+            https://github.com/SaiwaiClinicKochi/AutoRadioDownload
+            settings > Actions > GeneralでAllow all actions and reusable workflows 確認（default）
+            Workflow permissionsでRead and write permissionsへ変更 
+            
+
+            token暗号作成取得
+            https://github.com/settings/apps ここで　personal access tokens > classic token
+            、自由に名前つけ「yuutaradiotoken」、
+            無期限、「Only select repositories」で対象project選択
+            Permissionsで　add permissions > 検索でcontent　＞　Read and Write＞　 generate token
+            yuutaradiotoken
+            「ghp_LQ4A0IvgMDrkpIUl7aJhdqcV。。。」これをGH_TOKENに登録する
+            作ったyuutaradiotokenをクリックして中へ入り、repo checkbox選択。workflowというもあるが不要
+            Settings→ 左のlistの Secrets and variables　＞　Actions > New repository secret
+            GH_TOKEN 値：github personal access token >でGH_TOKENに登録する
+
+             ファイルアクセス　上辺code
+
+
+            Unique cloners in last 14 days, Unique visitors in last 14 daysを2週に１回日曜日に、.txt形式で、260521, 3, 4のように記録させたい。一番上の行は
+            “date”, “Unique cloners in last 14 days”, “Unique visitors in last 14 days”
+            """  
+             comment1               
+
+
+
+
+
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: install requests
+        run: pip install requests
+
+      - name: get traffic
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          REPO: SaiwaiClinicKochi/AutoRadioDownload
+        run: |
+
+          python << 'EOF'
+          import requests
+          import datetime
+          import os
+
+          token = os.environ["GH_TOKEN"]
+          repo = os.environ["REPO"]
+
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/vnd.github+json"
+          }
+
+          # clones
+          clones_url = f"https://api.github.com/repos/{repo}/traffic/clones"
+          clones_json = requests.get(clones_url, headers=headers).json()
+
+          unique_cloners = clones_json.get("uniques", 0)
+
+          # views
+          views_url = f"https://api.github.com/repos/{repo}/traffic/views"
+          views_json = requests.get(views_url, headers=headers).json()
+
+          unique_visitors = views_json.get("uniques", 0)
+
+          # date
+          today = datetime.datetime.utcnow().strftime("%y%m%d")
+
+          # output
+          os.makedirs("traffic", exist_ok=True)
+
+          filepath = "traffic/traffic.txt"
+
+          # header
+          if not os.path.exists(filepath) or os.path.getsize(filepath) == 0:
+              with open(filepath, "w", encoding="utf-8") as f:
+                  f.write('"date","Unique cloners in last 14 days","Unique visitors in last 14 days"\n')
+
+          # append
+          with open(filepath, "a", encoding="utf-8") as f:
+              f.write(f"{today},{unique_cloners},{unique_visitors}\n")
+
+          print(clones_json)
+          print(views_json)
+
+          print("===== traffic.txt =====")
+
+          with open(filepath, "r", encoding="utf-8") as f:
+              print(f.read())
+
+          EOF
+
+      - name: commit
+        run: |
+          echo "===== git status ====="
+
+          git status
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add traffic/traffic.txt
+          git status
+          git commit -m "update traffic log" || echo "no changes"
+
+          git push
